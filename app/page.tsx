@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties, type FormEvent } from "react";
 
 const hotspots = [
   { name: "Microsoft", x: 13.5, y: 46.4, size: 8.2 },
@@ -14,6 +14,10 @@ export default function Home() {
   const [welcomeState, setWelcomeState] = useState<
     "visible" | "opening" | "hidden"
   >("visible");
+  const [promptValue, setPromptValue] = useState("");
+  const [isThinking, setIsThinking] = useState(false);
+  const [bubbleMessage, setBubbleMessage] = useState("");
+  const [selectedModel, setSelectedModel] = useState(hotspots[2].name);
 
   function handleHotspotClick(modelName: string) {
     window.alert(`${modelName} selected`);
@@ -22,6 +26,17 @@ export default function Home() {
   function handleEnter() {
     setWelcomeState("opening");
     window.setTimeout(() => setWelcomeState("hidden"), 950);
+  }
+
+  function handlePromptSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!promptValue.trim()) {
+      return;
+    }
+
+    setBubbleMessage(promptValue.trim().toLowerCase() === "hi" ? "Hi" : "");
+    setIsThinking(true);
   }
 
   return (
@@ -35,19 +50,49 @@ export default function Home() {
             data-label={hotspot.name}
             key={hotspot.name}
             onClick={() => handleHotspotClick(hotspot.name)}
-            style={{
-              "--x": `${hotspot.x}%`,
-              "--y": `${hotspot.y}%`,
-              "--size": `${hotspot.size}%`,
-            } as React.CSSProperties}
+            style={
+              {
+                "--x": `${hotspot.x}%`,
+                "--y": `${hotspot.y}%`,
+                "--size": `${hotspot.size}%`,
+              } as CSSProperties
+            }
             type="button"
           />
         ))}
       </div>
+      {isThinking && (
+        <div className="bubble-layer" aria-label="Model response indicators">
+          {hotspots
+            .filter((hotspot) => hotspot.name === selectedModel)
+            .map((hotspot) => (
+              <div
+                className="model-bubble"
+                key={`${hotspot.name}-bubble`}
+                style={
+                  {
+                    "--x": `${hotspot.x}%`,
+                    "--y": `${hotspot.y - 10.2}%`,
+                  } as CSSProperties
+                }
+              >
+                {bubbleMessage ? (
+                  <strong>{bubbleMessage}</strong>
+                ) : (
+                  <>
+                    <span />
+                    <span />
+                    <span />
+                  </>
+                )}
+              </div>
+            ))}
+        </div>
+      )}
       <form
         className="prompt-bar"
         aria-label="Council prompt"
-        onSubmit={(event) => event.preventDefault()}
+        onSubmit={handlePromptSubmit}
       >
         <button className="prompt-bar__icon" aria-label="Add" type="button">
           +
@@ -55,11 +100,31 @@ export default function Home() {
         <input
           aria-label="Prompt"
           className="prompt-bar__input"
+          onChange={(event) => setPromptValue(event.target.value)}
           placeholder="Describe edits"
           type="text"
+          value={promptValue}
         />
+        <label className="model-select-wrap">
+          <span className="sr-only">Select model</span>
+          <select
+            aria-label="Select model"
+            className="model-select"
+            onChange={(event) => {
+              setSelectedModel(event.target.value);
+              setIsThinking(false);
+            }}
+            value={selectedModel}
+          >
+            {hotspots.map((hotspot) => (
+              <option key={hotspot.name} value={hotspot.name}>
+                {hotspot.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <button className="prompt-bar__submit" aria-label="Submit" type="submit">
-          ↑
+          &uarr;
         </button>
       </form>
       {welcomeState !== "hidden" && (

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 type CouncilModel = "Kimi" | "Mistral" | "OpenAI" | "Grok" | "DeepSeek";
-type RequestMode = "member" | "synthesizer";
+type RequestMode = "member" | "synthesizer" | "discussion";
 
 type AzureChatChoice = {
   message?: {
@@ -15,6 +15,23 @@ type AzureChatResponse = {
     message?: string;
   };
 };
+
+const languageNames: Record<string, string> = {
+  en: "English",
+  hinglish: "Hinglish with Hindi words in Devanagari script and English words in Latin script, like 'Radha Radha बरसाने वाली Radha'",
+  hi: "Hindi",
+  ta: "Tamil",
+  te: "Telugu",
+  kn: "Kannada",
+  ml: "Malayalam",
+  mr: "Marathi",
+  bn: "Bengali",
+  gu: "Gujarati",
+  pa: "Punjabi",
+};
+
+languageNames.hinglish =
+  "Hinglish with Hindi words in Devanagari script and English words in Latin script, like Radha Radha बरसाने वाली Radha";
 
 const modelEnvKeys: Record<CouncilModel, string> = {
   Kimi: "KIMI",
@@ -87,13 +104,26 @@ function getModelConfig(model: CouncilModel) {
   return { apiKey, apiVersion, deployment, endpoint };
 }
 
-function buildMessages(mode: RequestMode, message: string) {
+function buildMessages(mode: RequestMode, message: string, language: string) {
+  const languageInstruction = `Reply only in ${language}. If the language is Hinglish, never romanize Hindi words; write Hindi words in Devanagari and keep only English words in Latin script.`;
+
   if (mode === "synthesizer") {
     return [
       {
         role: "system",
         content:
-          "You are the AI Council chair. Read the council member responses and produce one short, professional final answer. Resolve contradictions, avoid repetition, and answer the user's original query directly.",
+          `You are the AI Council chair. Give a short, simple, accurate final answer. Use easy words a normal user can understand. Avoid bookish or complex wording. If uncertain, say so directly. ${languageInstruction}`,
+      },
+      { role: "user", content: message },
+    ];
+  }
+
+  if (mode === "discussion") {
+    return [
+      {
+        role: "system",
+        content:
+          `Write a natural AI council discussion between five male members: Kimi, Mistral, OpenAI, Grok, and DeepSeek. OpenAI is the president who manages turns. Return exactly 10 lines. Format each line exactly as Model | type: opinion/agree/disagree/question/final | say: spoken sentence | show: public bubble text. Keep model names in English in the prefix only. Every model must give an independent opinion first, then later agree or disagree with a reason. If any model has not agreed or disagreed yet, OpenAI must directly ask that model, like "Mistral, what do you say?" or "DeepSeek, do you agree or not?" Members should explain why an answer is good, why they agree, or why they do not agree. The final two lines must state whether the council mostly agrees or disagrees, and why. No court, judge, verdict, case, or legal language. Use easy words, no bookish language. The show text should be clean and short for the bubble. Keep each say and show under 16 words. No markdown. ${languageInstruction}`,
       },
       { role: "user", content: message },
     ];
@@ -103,7 +133,7 @@ function buildMessages(mode: RequestMode, message: string) {
     {
       role: "system",
       content:
-        "You are one member of AI Council. Answer clearly and concisely. Give your own useful perspective without mentioning implementation details.",
+        `You are one male member of AI Council. Answer short, simple, and accurate. Give your own useful opinion in easy words. Avoid bookish or complex wording. If uncertain, say so directly. ${languageInstruction}`,
     },
     { role: "user", content: message },
   ];
@@ -114,10 +144,20 @@ export async function POST(request: Request) {
     message?: unknown;
     mode?: unknown;
     model?: unknown;
+    language?: unknown;
   } | null;
 
   const message = typeof body?.message === "string" ? body.message.trim() : "";
-  const mode: RequestMode = body?.mode === "synthesizer" ? "synthesizer" : "member";
+  const language =
+    typeof body?.language === "string" && languageNames[body.language]
+      ? languageNames[body.language]
+      : "English";
+  const mode: RequestMode =
+    body?.mode === "synthesizer"
+      ? "synthesizer"
+      : body?.mode === "discussion"
+        ? "discussion"
+        : "member";
 
   if (!message) {
     return NextResponse.json({ error: "Message is required." }, { status: 400 });
@@ -141,10 +181,10 @@ export async function POST(request: Request) {
 
   const { isAzureOpenAI, url } = buildChatUrl(endpoint, deployment, apiVersion);
   const requestBody = {
-    messages: buildMessages(mode, message),
+    messages: buildMessages(mode, message, language),
     ...(isAzureOpenAI ? {} : { model: deployment }),
-    temperature: mode === "synthesizer" ? 0.35 : 0.7,
-    max_tokens: mode === "synthesizer" ? 900 : 700,
+    temperature: mode === "synthesizer" ? 0.35 : mode === "discussion" ? 0.8 : 0.7,
+    max_tokens: mode === "synthesizer" ? 260 : mode === "discussion" ? 420 : 180,
   };
 
   const response = await fetch(url, {
